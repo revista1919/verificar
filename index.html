@@ -226,7 +226,7 @@
 
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, doc, getDoc, collection, query, where, getDocs, limit, collectionGroup } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, query, where, getDocs, limit } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         
         // Configuración de Firebase
         const firebaseConfig = {
@@ -259,10 +259,8 @@
                     <div class="status-badge status-loading">Consultando registros oficiales...</div>
                 `;
                 
-                // ========== NUEVA LÓGICA: BUSCAR EN SUBCOLECCIÓN ==========
-                
-                // 1. Intentar buscar en la subcolección 'certificate' usando collectionGroup
-                const certificatesRef = collectionGroup(db, 'certificate');
+                // Buscar en la colección pública 'certificates'
+                const certificatesRef = collection(db, 'certificates');
                 const q = query(
                     certificatesRef,
                     where('certificateNumber', '==', certificateId),
@@ -272,63 +270,14 @@
                 const querySnapshot = await getDocs(q);
                 
                 if (!querySnapshot.empty) {
-                    // Encontrado en subcolección
                     const certDoc = querySnapshot.docs[0];
                     const certData = certDoc.data();
                     
-                    // Obtener el submission padre para más información
-                    const submissionId = certDoc.ref.parent.parent.id;
-                    const submissionRef = doc(db, 'submissions', submissionId);
-                    const submissionSnap = await getDoc(submissionRef);
-                    
-                    const submissionData = submissionSnap.exists ? submissionSnap.data() : null;
-                    
-                    showValidCertificate(contentDiv, certData, submissionData, certificateId);
+                    showValidCertificate(contentDiv, certData, null, certificateId);
                     return;
                 }
                 
-                // 2. Fallback: Buscar en el documento principal (legacy)
-                const submissionsRef = collection(db, 'submissions');
-                const legacyQuery = query(
-                    submissionsRef,
-                    where('certificate.certificateNumber', '==', certificateId),
-                    limit(1)
-                );
-                
-                const legacySnapshot = await getDocs(legacyQuery);
-                
-                if (!legacySnapshot.empty) {
-                    const docSnap = legacySnapshot.docs[0];
-                    const data = docSnap.data();
-                    showValidCertificate(contentDiv, data.certificate, data, certificateId);
-                    return;
-                }
-                
-                // 3. Último intento: Buscar por submissionId directo
-                const docRef = doc(db, 'submissions', certificateId);
-                const docSnap = await getDoc(docRef);
-                
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    
-                    // Verificar si tiene subcolección certificate
-                    const subCertificates = await collection(db, 'submissions', certificateId, 'certificate');
-                    const subCertSnapshot = await getDocs(query(subCertificates, limit(1)));
-                    
-                    if (!subCertSnapshot.empty) {
-                        const certData = subCertSnapshot.docs[0].data();
-                        showValidCertificate(contentDiv, certData, data, certificateId);
-                        return;
-                    }
-                    
-                    // Verificar si tiene campo certificate
-                    if (data.certificate) {
-                        showValidCertificate(contentDiv, data.certificate, data, certificateId);
-                        return;
-                    }
-                }
-                
-                // No se encontró nada
+                // No encontrado
                 showInvalidCertificate(contentDiv);
                 
             } catch (error) {
@@ -338,27 +287,19 @@
         }
         
         function showValidCertificate(container, certData, submissionData, certNumber) {
-            // Asegurarse de que certData existe
             const cert = certData || {};
             
-            // Obtener metadata del submission o del certificado
-            const metadata = submissionData?.currentMetadata || submissionData || {};
-            
             // Determinar título
-            const title = cert.title || metadata.title || 'Título no disponible';
+            const title = cert.title || 'Título no disponible';
             
             // Determinar autores
             let authorsText = 'No disponibles';
             if (cert.authors && Array.isArray(cert.authors) && cert.authors.length > 0) {
                 authorsText = cert.authors.map(a => a.fullName || a.name || a.email || 'Autor').join(', ');
-            } else if (metadata.authors && Array.isArray(metadata.authors) && metadata.authors.length > 0) {
-                authorsText = metadata.authors.map(a => a.fullName || `${a.firstName || ''} ${a.lastName || ''}`.trim() || a.email || 'Autor').join(', ');
             }
             
             // Determinar fecha de aceptación
-            const acceptanceDate = cert.acceptanceDate || 
-                                  (metadata.acceptedDate ? new Date(metadata.acceptedDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : null) ||
-                                  'No registrada';
+            const acceptanceDate = cert.acceptanceDate || 'No registrada';
             
             container.innerHTML = `
                 <div class="status-icon">${icons.success}</div>
@@ -367,7 +308,7 @@
                 <div class="certificate-info">
                     <div class="info-row">
                         <span class="info-label">ID de Certificado</span>
-                        <span class="info-value">${certNumber || cert.certificateNumber || 'No registrado'}</span>
+                        <span class="info-value">${cert.certificateNumber || certNumber || 'No registrado'}</span>
                     </div>
                     <div class="info-row">
                         <span class="info-label">Título del Manuscrito</span>
