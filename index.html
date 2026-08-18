@@ -226,7 +226,7 @@
 
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, query, where, getDocs, limit } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, doc, getDoc, collection, query, where, getDocs, limit } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         
         // Configuración de Firebase
         const firebaseConfig = {
@@ -259,34 +259,78 @@
                     <div class="status-badge status-loading">Consultando registros oficiales...</div>
                 `;
                 
-                // Buscar en la colección pública 'certificates'
-                const certificatesRef = collection(db, 'certificates');
-                const q = query(
-                    certificatesRef,
-                    where('certificateNumber', '==', certificateId),
-                    limit(1)
-                );
+                console.log('🔍 Verificando ID:', certificateId);
                 
-                const querySnapshot = await getDocs(q);
-                
-                if (!querySnapshot.empty) {
-                    const certDoc = querySnapshot.docs[0];
-                    const certData = certDoc.data();
+                // 1. PRIMERO: Intentar buscar por ID del documento directamente
+                try {
+                    const certRef = doc(db, 'certificates', certificateId);
+                    const certSnap = await getDoc(certRef);
                     
-                    showValidCertificate(contentDiv, certData, null, certificateId);
-                    return;
+                    if (certSnap.exists) {
+                        console.log('✅ Encontrado por ID del documento');
+                        const certData = certSnap.data();
+                        showValidCertificate(contentDiv, certData, certificateId);
+                        return;
+                    }
+                } catch (docError) {
+                    console.log('⚠️ No se pudo buscar por ID directo:', docError.message);
+                }
+                
+                // 2. SEGUNDO: Buscar por certificateNumber
+                try {
+                    const certificatesRef = collection(db, 'certificates');
+                    const q = query(
+                        certificatesRef,
+                        where('certificateNumber', '==', certificateId),
+                        limit(1)
+                    );
+                    
+                    const querySnapshot = await getDocs(q);
+                    
+                    if (!querySnapshot.empty) {
+                        console.log('✅ Encontrado por certificateNumber');
+                        const certDoc = querySnapshot.docs[0];
+                        const certData = certDoc.data();
+                        showValidCertificate(contentDiv, certData, certDoc.id);
+                        return;
+                    }
+                } catch (queryError) {
+                    console.log('⚠️ No se pudo buscar por certificateNumber:', queryError.message);
+                }
+                
+                // 3. TERCERO: Buscar por verificationId
+                try {
+                    const certificatesRef = collection(db, 'certificates');
+                    const q2 = query(
+                        certificatesRef,
+                        where('verificationId', '==', certificateId),
+                        limit(1)
+                    );
+                    
+                    const querySnapshot2 = await getDocs(q2);
+                    
+                    if (!querySnapshot2.empty) {
+                        console.log('✅ Encontrado por verificationId');
+                        const certDoc = querySnapshot2.docs[0];
+                        const certData = certDoc.data();
+                        showValidCertificate(contentDiv, certData, certDoc.id);
+                        return;
+                    }
+                } catch (queryError2) {
+                    console.log('⚠️ No se pudo buscar por verificationId:', queryError2.message);
                 }
                 
                 // No encontrado
+                console.log('❌ No se encontró el certificado');
                 showInvalidCertificate(contentDiv);
                 
             } catch (error) {
-                console.error('Error verificando certificado:', error);
+                console.error('❌ Error verificando certificado:', error);
                 showError(contentDiv, error);
             }
         }
         
-        function showValidCertificate(container, certData, submissionData, certNumber) {
+        function showValidCertificate(container, certData, certNumber) {
             const cert = certData || {};
             
             // Determinar título
@@ -299,7 +343,16 @@
             }
             
             // Determinar fecha de aceptación
-            const acceptanceDate = cert.acceptanceDate || 'No registrada';
+            let acceptanceDate = cert.acceptanceDate || 'No registrada';
+            
+            // Formatear fecha si es timestamp
+            if (acceptanceDate && acceptanceDate.toDate) {
+                acceptanceDate = acceptanceDate.toDate().toLocaleDateString('es-ES', { 
+                    day: 'numeric', 
+                    month: 'long', 
+                    year: 'numeric' 
+                });
+            }
             
             container.innerHTML = `
                 <div class="status-icon">${icons.success}</div>
@@ -307,8 +360,8 @@
                 
                 <div class="certificate-info">
                     <div class="info-row">
-                        <span class="info-label">ID de Certificado</span>
-                        <span class="info-value">${cert.certificateNumber || certNumber || 'No registrado'}</span>
+                        <span class="info-label">ID de Verificación</span>
+                        <span class="info-value">${certNumber || cert.certificateNumber || 'No registrado'}</span>
                     </div>
                     <div class="info-row">
                         <span class="info-label">Título del Manuscrito</span>
@@ -362,6 +415,8 @@
         
         const certificateId = getCertificateIdFromURL();
         const container = document.getElementById('content');
+        
+        console.log('📋 ID desde URL:', certificateId);
         
         if (certificateId && certificateId !== 'verificar' && certificateId !== '') {
             verifyCertificate(certificateId);
