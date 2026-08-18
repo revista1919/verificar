@@ -216,7 +216,8 @@
         <div class="system-title">Sistema de Autenticidad de Documentos</div>
         
         <div id="content">
-            </div>
+            <!-- Aquí se cargará el contenido dinámico -->
+        </div>
         
         <div class="footer">
             <p>© 2026 Revista Nacional de las Ciencias para Estudiantes.</p>
@@ -407,18 +408,43 @@
         }
         
         function getCertificateIdFromURL() {
+            // 1. PRIMERO: Verificar si hay ID en sessionStorage (viene del 404.html)
+            const storedId = sessionStorage.getItem('certificateId');
+            if (storedId && storedId.trim() !== '') {
+                console.log('✅ ID desde sessionStorage:', storedId);
+                sessionStorage.removeItem('certificateId'); // Limpiar después de usar
+                return decodeURIComponent(storedId.trim());
+            }
+            
+            // 2. SEGUNDO: Intentar con query params (?id=XXXXX)
+            const urlParams = new URLSearchParams(window.location.search);
+            const queryId = urlParams.get('id');
+            if (queryId && queryId.trim() !== '') {
+                console.log('✅ ID desde query param:', queryId);
+                return decodeURIComponent(queryId.trim());
+            }
+            
+            // 3. TERCERO: Intentar con el path (para desarrollo local)
             const path = window.location.pathname;
             const parts = path.split('/');
             const lastPart = parts[parts.length - 1];
-            return decodeURIComponent(lastPart);
+            
+            if (lastPart && lastPart !== 'index.html' && lastPart !== 'verificar' && lastPart !== '') {
+                console.log('✅ ID desde path:', lastPart);
+                return decodeURIComponent(lastPart);
+            }
+            
+            console.log('❌ No se encontró ID en la URL');
+            return null;
         }
         
+        // Inicialización
         const certificateId = getCertificateIdFromURL();
         const container = document.getElementById('content');
         
-        console.log('📋 ID desde URL:', certificateId);
+        console.log('📋 ID extraído:', certificateId);
         
-        if (certificateId && certificateId !== 'verificar' && certificateId !== '') {
+        if (certificateId && certificateId !== 'verificar' && certificateId !== 'index.html') {
             verifyCertificate(certificateId);
         } else {
             container.innerHTML = `
@@ -426,6 +452,9 @@
                 <div class="status-badge status-invalid">Parámetro Ausente</div>
                 <p style="margin-top: 20px; color: var(--text-gray); font-size: 14px;">
                     No se ha proporcionado un código de identificación válido en la dirección web para proceder con la verificación documental.
+                    <br><br>
+                    <strong>Formato correcto:</strong><br>
+                    https://www.revistacienciasestudiantes.com/verificar/CODIGO
                 </p>
             `;
         }
